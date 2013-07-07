@@ -22,13 +22,16 @@
 #include <LibTempTMP421.h>
 
 #define THRESHOLD_BASE   	25 // In degrees C
-#define DELAY_LOOP_MS           2000
+
+#define TIMER_GRAPH_UPDATE_MS   500
+#define TIMER_RELAY_UPDATE_MS	1000
+
+#define SAMPLE_COUNT		10 // Must be less than sizeof(int) - 1
 
 #define PIN_TEMP		3
 #define PIN_RELAY		2
 #define PIN_KNOB 		15
 
-#define SIGN_DEGREES		(char) 0xdf
 #define SIGN_THRESHOLD		(char) 126
 
 #define GRAPH_WIDTH		7 // Max 7, since we use 8th (last) char for custom deg/C 
@@ -56,7 +59,7 @@ byte char_degc[8] = {
 	0b00000000
 };
 
-uint32_t timer_beg;
+uint32_t timer_graph_beg;
 
 // Create Digital (Temperature sensor) class
 // Init, too
@@ -74,25 +77,62 @@ void relay_set(int state) {
 	lcd.print(state ? " On" : "Off");
 }
 
+void sample_update(int state) {
+
+	static uint32_t timer_beg = millis();
+	static bool samples[SAMPLE_COUNT];
+	static unsigned int count_above, count_below;
+
+	unsigned int i;
+
+	if(millis() - timer_beg >= TIMER_RELAY_UPDATE_MS) {
+
+		// Populate last entry of sample buffer
+		samples[SAMPLE_COUNT - 1] = state == HIGH;
+
+		count_above = count_below = 0;
+
+		// Count results in buffer
+		for(i = 0; i < SAMPLE_COUNT; i++) {
+			if(samples[i] == true)
+				count_above++;
+			else
+				count_below++;
+		}
+
+		// All samples are above threshold
+		if(count_above == SAMPLE_COUNT && count_below == 0) {
+			relay_set(HIGH);
+		} else 
+		// All samples are below threshold
+		if(count_below == SAMPLE_COUNT && count_above == 0) {
+			relay_set(LOW);
+		}
+
+		// Shift all samples a step left
+		for(i = 1; i < SAMPLE_COUNT; i++)
+			samples[i - 1] = samples[i];
+
+		timer_beg = millis();
+	}
+
+}
+
 void setup() {
 
-	// Initialize relay pin and set to LOW (off)
+	// Initialize relay pin (default state is LOW; off)
 	pinMode(PIN_RELAY, OUTPUT);
 
 	// Initialize LCD
 	lcd.begin(16, 2);
-
 	lcd.clear();
-
-	// Initialize relay
-	relay_set(LOW);
 
 	Serial.begin(9600);
 			
 	if(GRAPH_WIDTH < 8)
 		lcd.createChar(GRAPH_WIDTH, char_degc);
 
-	timer_beg = millis();
+	timer_graph_beg = millis();
 
 }
 
@@ -125,18 +165,18 @@ void loop() {
 
 	int tq = ((float) t_scale / (float) tmax) * (float) 8.0f;
 
-	Serial.print("Min:"); Serial.print(t_min);
-	Serial.print(", Max:"); Serial.print(t_max);
-	Serial.print(", Scale:"); Serial.print(t_scale);
-	Serial.print(", Tmax:"); Serial.print(tmax);
-	Serial.print(", tq:"); Serial.println(tq);
+	//Serial.print("Min:"); Serial.print(t_min);
+	//Serial.print(", Max:"); Serial.print(t_max);
+	//Serial.print(", Scale:"); Serial.print(t_scale);
+	//Serial.print(", Tmax:"); Serial.print(tmax);
+	//Serial.print(", tq:"); Serial.println(tq);
 
 	lcd.setCursor(GRAPH_WIDTH, 0);
 	PRINT_TEMP_FRACT(t);
 	
 	/** Graph ***********************************************************/
 
-	bool graph_update = millis() - timer_beg > DELAY_LOOP_MS;
+	bool graph_update = millis() - timer_graph_beg > TIMER_GRAPH_UPDATE_MS;
 
 	if(graph_update) {
 
@@ -173,14 +213,12 @@ void loop() {
 	lcd.print("Turns on at ");
 	PRINT_TEMP(threshold);
 
-	/** Relay Control ***************************************************/
+	/** Relay Control (abstracted) **************************************/
 
-	if(t >= threshold) {
-		relay_set(HIGH);
-	} else {
-		relay_set(LOW);
-	}
+	sample_update(t >= threshold);
 
+
+	/** Graph ***********************************************************/
 	if(graph_update) {
 
 		// Shift all pixels on each character one step to the left
@@ -190,11 +228,7 @@ void loop() {
 			lcd.createChar(i, graph[i]);
 		}
 
-		timer_beg = millis();
-	} else {
-		delay(50);
+		timer_graph_beg = millis();
 	}
-
-	delay(100); // XXX DHT11 is CRAZY and *REQUIRES* this
 
 }
