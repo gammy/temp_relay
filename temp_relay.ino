@@ -1,16 +1,26 @@
 /* Temperature-driven mains(AC, 230V) relay with 
  * a graph display and threshold adjust.
+ * 
+ * Software features:
+ * - "All-Above or All-Below" threshold relay switching
+ * - Realtime-adjustable threshold
+ * - (5 * 8) * 7 pixel scrolling historical bar chart
+ * - Custom character for displaying "°C"
  *
- * - DHT11 1-wire temperature sensor
- *  OR Analog Device tmp421 I2C: http://shop.moderndevice.com/products/tmp421-temperature-sensor
- * - 1602 display in 4-bit mode, with 8-character scrolling pixel graph
- * - Threshold-adjustable
+ * Hardare:
+ * - Analog Device tmp421 I2C: http://shop.moderndevice.com/products/tmp421-temperature-sensor
+ * - 1602 display in 4-bit mode, with character scrolling pixel graph (up to 8 chars)
+ * - Analog POT for threshold adjust
  * - Developed on Atmega1280 (Arduino Mega)
  *
  * Libraries used:
  * - LiquidCrystal
- * - niesteszeck's interrupt-driven DHT11 library:
- * 	https://github.com/niesteszeck/idDHT11
+ * - LibTempTMP421 (which in turn uses Wire for I2C communication)
+ *   https://github.com/moderndevice/LibTempTMP421
+ * 
+ * TODO:
+ * - Periodically store coolest and warmest readings and load on boot
+ * - Periodically store the bar chart and load on boot
  *
  * For Tomas
  * By gammy
@@ -23,10 +33,10 @@
 
 #define THRESHOLD_BASE   	25 // In degrees C
 
-#define TIMER_GRAPH_UPDATE_MS   500
-#define TIMER_RELAY_UPDATE_MS	1000
+#define TIMER_GRAPH_UPDATE_MS   1000 * (60 * 1)
 
-#define SAMPLE_COUNT		10 // Must be less than sizeof(int) - 1
+#define TIMER_RELAY_UPDATE_MS	1000
+#define SAMPLE_COUNT		60 // Must be less than sizeof(int) - 1
 
 #define PIN_TEMP		3
 #define PIN_RELAY		2
@@ -41,8 +51,8 @@
 	                          lcd.print((int) ((t - (int) t) * 10)); \
                                   lcd.write((byte) GRAPH_WIDTH);}
 
-#define PRINT_TEMP(a) 	{ lcd.print(a); \
-	                  lcd.write((byte) GRAPH_WIDTH);}
+#define PRINT_TEMP(a)		{ lcd.print(a); \
+				  lcd.write((byte) GRAPH_WIDTH);}
 
 // Graph buffer
 byte graph[GRAPH_WIDTH + 1][8];
@@ -60,9 +70,9 @@ byte char_degc[8] = {
 };
 
 uint32_t timer_graph_beg;
+uint32_t timer_backup_beg;
 
-// Create Digital (Temperature sensor) class
-// Init, too
+// Create Analog Device (Temperature sensor) class (which initializes I2C via Wire)
 LibTempTMP421 temp = LibTempTMP421(0);
 
 // Create LCD class. Pins are: RS, EN, D4, D5, D6, D7
@@ -127,6 +137,9 @@ void setup() {
 	lcd.begin(16, 2);
 	lcd.clear();
 
+	lcd.setCursor(0, 1);
+	lcd.print("Turns on at ");
+
 	Serial.begin(9600);
 			
 	if(GRAPH_WIDTH < 8)
@@ -148,17 +161,17 @@ void loop() {
 
 	// XXX HAX HAX HAX XXX
 	// Adjust minimum and maximum observed temperatures
+	if(t < t_min)
+		t_min = t;
+	//t_min = 23;
 	//if(t < t_min)
-	//	t_min = t;
-	t_min = 24;
-	if(t < 24)
-		t = 24;
+	//	t = t_min;
 
-	t_max = 32;
-	if(t > 32)
-		t = 32;
+	//t_max = 34;
 	//if(t > t_max)
-	//	t_max = t;
+	//	t = t_max;
+	if(t > t_max)
+		t_max = t;
 
 	t_scale = t - t_min;
 	int tmax = t_max - t_min;
@@ -176,9 +189,23 @@ void loop() {
 	
 	/** Graph ***********************************************************/
 
-	bool graph_update = millis() - timer_graph_beg > TIMER_GRAPH_UPDATE_MS;
+	bool graph_update = (millis() - timer_graph_beg) > (uint32_t) TIMER_GRAPH_UPDATE_MS;
+	//uint32_t CUNT = millis() - timer_graph_beg;
+	uint32_t FUCK = millis() - timer_graph_beg;
 
+	Serial.print((uint32_t) ((uint32_t ) millis() - (uint32_t) timer_graph_beg));
+	Serial.print(' ');
+	Serial.print(FUCK);
+	Serial.print(' ');
+	Serial.println((uint32_t) TIMER_GRAPH_UPDATE_MS);
+
+	if(FUCK > (uint32_t) TIMER_GRAPH_UPDATE_MS) {
+		Serial.println("FUUUUUUUUUUUUUUUUUUUUUCK");
+	} 
+
+	// XXX No averaging
 	if(graph_update) {
+		Serial.println("Updating graph");
 
 		// Insert temperatue into last character, rightmost pixel of the graph
 		for(i = 0; i < 8; i++)
@@ -205,18 +232,16 @@ void loop() {
 
 	// Calculate threshold, taking temp pot into consideration
 	// (This'll give 32 discrete steps with 0 in the middle)
-	int8_t threshold = THRESHOLD_BASE + (512 - analogRead(PIN_KNOB)) / 32;
+	int threshold = THRESHOLD_BASE + (512 - analogRead(PIN_KNOB)) / 32;
 	if(threshold < 0)
 		threshold = 0;
 
-	lcd.setCursor(0, 1);
-	lcd.print("Turns on at ");
+	lcd.setCursor(12, 1);
 	PRINT_TEMP(threshold);
 
 	/** Relay Control (abstracted) **************************************/
 
 	sample_update(t >= threshold);
-
 
 	/** Graph ***********************************************************/
 	if(graph_update) {
