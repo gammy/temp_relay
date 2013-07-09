@@ -30,13 +30,15 @@
 #include <LiquidCrystal.h>
 #include <Wire.h>
 #include <LibTempTMP421.h>
+#include <EEPROM.h>
 
 #define THRESHOLD_BASE   	25 // In degrees C
 
-#define TIMER_GRAPH_UPDATE_MS   1000 * (60 * 1)
-
+#define TIMER_GRAPH_UPDATE_MS   1000 * (60 * 21) // (5*7) = 35 pixels, update once every 21 minutes = ~12 hours total
 #define TIMER_RELAY_UPDATE_MS	1000
-#define SAMPLE_COUNT		60 // Must be less than sizeof(int) - 1
+#define TIMER_STORE_UPDATE_MS	(10 * TIMER_RELAY_UPDATE_MS)
+
+#define SAMPLE_COUNT		20 // Must be less than sizeof(int) - 1
 
 #define PIN_TEMP		3
 #define PIN_RELAY		2
@@ -69,12 +71,21 @@ byte char_degc[8] = {
 	0b00000000
 };
 
-uint32_t timer_graph_beg;
-uint32_t timer_backup_beg;
+struct {
+	uint32_t graph;
+	uint32_t store;
+} timers;
+
+typedef struct temp_s {
+	LibTempTMP421 *sensor;
+	float scale;
+	float min;
+	float max;
+};
+
+temp_s temp;
 
 // Create Analog Device (Temperature sensor) class (which initializes I2C via Wire)
-LibTempTMP421 temp = LibTempTMP421(0);
-
 // Create LCD class. Pins are: RS, EN, D4, D5, D6, D7
 LiquidCrystal lcd(6, 7,             // Register Select & Data Enable
 		  8, 9, 10, 11);    // Bit 1, 2, 3, 4
@@ -145,38 +156,33 @@ void setup() {
 	if(GRAPH_WIDTH < 8)
 		lcd.createChar(GRAPH_WIDTH, char_degc);
 
-	timer_graph_beg = millis();
+	temp.sensor = new LibTempTMP421(0);
+	temp.min = 100.0f;
+	temp.max = 0.0f;
+
+	timers.graph = millis();
+	timers.store = timers.graph;
 
 }
 
 void loop() {
 
 	static int i, y;
-	static int t_scale;
-	static int t_min = 100;
-	static int t_max = 0;
 
 	/** Temperatue ******************************************************/
-	float t = temp.GetTemperature();
+	float t = temp.sensor->GetTemperature();
 
-	// XXX HAX HAX HAX XXX
 	// Adjust minimum and maximum observed temperatures
-	if(t < t_min)
-		t_min = t;
-	//t_min = 23;
-	//if(t < t_min)
-	//	t = t_min;
+	if(t < temp.min)
+		temp.min = t;
 
-	//t_max = 34;
-	//if(t > t_max)
-	//	t = t_max;
-	if(t > t_max)
-		t_max = t;
+	if(t > temp.max)
+		temp.max = t;
 
-	t_scale = t - t_min;
-	int tmax = t_max - t_min;
+	temp.scale = t - temp.min;
+	float tmax = temp.max - temp.min;
 
-	int tq = ((float) t_scale / (float) tmax) * (float) 8.0f;
+	int tq = (temp.scale / tmax) * (float) 8.0f;
 
 	//Serial.print("Min:"); Serial.print(t_min);
 	//Serial.print(", Max:"); Serial.print(t_max);
@@ -189,11 +195,10 @@ void loop() {
 	
 	/** Graph ***********************************************************/
 
-	bool graph_update = (millis() - timer_graph_beg) > (uint32_t) TIMER_GRAPH_UPDATE_MS;
-	//uint32_t CUNT = millis() - timer_graph_beg;
-	uint32_t FUCK = millis() - timer_graph_beg;
+	//uint32_t CUNT = millis() - timers_graph_beg;
+	uint32_t FUCK = millis() - timers.graph;
 
-	Serial.print((uint32_t) ((uint32_t ) millis() - (uint32_t) timer_graph_beg));
+	Serial.print((uint32_t) ((uint32_t ) millis() - (uint32_t) timers.graph));
 	Serial.print(' ');
 	Serial.print(FUCK);
 	Serial.print(' ');
@@ -204,16 +209,26 @@ void loop() {
 	} 
 
 	// XXX No averaging
-	if(graph_update) {
+	if(millis() - timers.graph > (uint32_t) TIMER_GRAPH_UPDATE_MS) {
 		Serial.println("Updating graph");
 
+		// Shift all pixels on each character one step to the left
+		for(i = 0; i < GRAPH_WIDTH; i++) {
+			for(y = 0; y < 8; y++)
+				graph[i][y] <<= 1;
+		}
+
 		// Insert temperatue into last character, rightmost pixel of the graph
-		for(i = 0; i < 8; i++)
+		for(i = 0; i < 8; i++) {
 			if(i <= tq)
 				graph[GRAPH_WIDTH - 1][7 - i] |= 0b00000001;
+		}
+
+		// Write last character to lcd
 		lcd.createChar(GRAPH_WIDTH - 1, graph[GRAPH_WIDTH - 1]);
 
 		// Copy last bit of next char to first bit of current char
+		// and display all characters except for the last one
 		for(i = 1; i < GRAPH_WIDTH; i++) {
 			for(y = 0; y < 8; y++)
 				graph[i - 1][y] ^= ((graph[i][y] << 2) & 0b10000000) >> 7;
@@ -225,7 +240,8 @@ void loop() {
 
 		for(i = 0; i < GRAPH_WIDTH; i++)
 			lcd.write((byte) i);
-
+		
+		timers.graph = millis();
 	}
  
 	/** Temperatue Threshold ********************************************/
@@ -242,18 +258,5 @@ void loop() {
 	/** Relay Control (abstracted) **************************************/
 
 	sample_update(t >= threshold);
-
-	/** Graph ***********************************************************/
-	if(graph_update) {
-
-		// Shift all pixels on each character one step to the left
-		for(i = 0; i < GRAPH_WIDTH; i++) {
-			for(y = 0; y < 8; y++)
-				graph[i][y] <<= 1;
-			lcd.createChar(i, graph[i]);
-		}
-
-		timer_graph_beg = millis();
-	}
 
 }
