@@ -11,7 +11,7 @@
  * - Analog Device tmp421 I2C: http://shop.moderndevice.com/products/tmp421-temperature-sensor
  * - 1602 display in 4-bit mode, with character scrolling pixel graph (up to 8 chars)
  * - Analog POT for threshold adjust
- * - Developed on Atmega1280 (Arduino Mega)
+ * - Developed on Atmega328p (Arduino Duelanove)
  *
  * Libraries used:
  * - LiquidCrystal
@@ -40,9 +40,8 @@
 
 #define SAMPLE_COUNT		20 // Must be less than sizeof(int) - 1
 
-#define PIN_TEMP		3
 #define PIN_RELAY		2
-#define PIN_KNOB 		15
+#define PIN_KNOB 		0
 
 #define SIGN_THRESHOLD		(char) 126
 
