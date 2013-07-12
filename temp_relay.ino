@@ -202,19 +202,6 @@ void loop() {
 	
 	/** Graph ***********************************************************/
 
-	//uint32_t CUNT = millis() - timers_graph_beg;
-	uint32_t FUCK = millis() - timers.graph;
-
-	Serial.print((uint32_t) ((uint32_t ) millis() - (uint32_t) timers.graph));
-	Serial.print(' ');
-	Serial.print(FUCK);
-	Serial.print(' ');
-	Serial.println((uint32_t) TIMER_GRAPH_UPDATE_MS);
-
-	if(FUCK > (uint32_t) TIMER_GRAPH_UPDATE_MS) {
-		Serial.println("FUUUUUUUUUUUUUUUUUUUUUCK");
-	} 
-
 	// XXX No averaging
 	if(millis() - timers.graph > (uint32_t) TIMER_GRAPH_UPDATE_MS) {
 		Serial.println("Updating graph");
