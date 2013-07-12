@@ -178,7 +178,7 @@ void setup() {
 	
 	relay_set(LOW);
 
-	lcd.setCursor(0, 0); lcd.print("Temp Relay v0.1 ");
+	lcd.setCursor(0, 0); lcd.print("Temp Relay v.1-1");
 	lcd.setCursor(0, 1); lcd.print("   By gammy 2013");
 	delay(2000);
 
