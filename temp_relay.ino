@@ -203,7 +203,7 @@ void loop() {
 	/** Graph ***********************************************************/
 
 	// XXX No averaging
-	if(millis() - timers.graph > (uint32_t) TIMER_GRAPH_UPDATE_MS) {
+	if(millis() - timers.graph >= (uint32_t) TIMER_GRAPH_UPDATE_MS) {
 		Serial.println("Updating graph");
 
 		// Shift all pixels on each character one step to the left
