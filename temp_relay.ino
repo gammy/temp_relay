@@ -35,7 +35,8 @@
 
 #define THRESHOLD_BASE   	25 // In degrees C
 
-#define TIMER_GRAPH_UPDATE_MS   1000 * (60 * 21) // (5*7) = 35 pixels, update once every 21 minutes = ~12 hours total
+//#define TIMER_GRAPH_UPDATE_MS   1000 * (60 * 21) // (5*7) = 35 pixels, update once every 21 minutes = ~12 hours total
+#define TIMER_GRAPH_UPDATE_MS   200 // (5*7) = 35 pixels, update once every 21 minutes = ~12 hours total
 #define TIMER_RELAY_UPDATE_MS	1000
 //#define TIMER_STORE_UPDATE_MS	(10 * TIMER_RELAY_UPDATE_MS)
 
@@ -74,6 +75,7 @@ byte char_degc[8] = {
 struct {
 	uint32_t graph;
 	uint32_t store;
+	uint32_t sample;
 } timers;
 
 typedef struct temp_s {
@@ -100,42 +102,69 @@ void relay_set(int state) {
 
 void sample_update(int state) {
 
-	static uint32_t timer_beg = millis();
 	static bool samples[SAMPLE_COUNT];
 	static unsigned int count_above, count_below;
-
 	unsigned int i;
 
-	if(millis() - timer_beg >= TIMER_RELAY_UPDATE_MS) {
+	// Populate last entry of sample buffer
+	samples[SAMPLE_COUNT - 1] = state == HIGH;
 
-		// Populate last entry of sample buffer
-		samples[SAMPLE_COUNT - 1] = state == HIGH;
+	count_above = count_below = 0;
 
-		count_above = count_below = 0;
-
-		// Count results in buffer
-		for(i = 0; i < SAMPLE_COUNT; i++) {
-			if(samples[i] == true)
-				count_above++;
-			else
-				count_below++;
-		}
-
-		// All samples are above threshold
-		if(count_above == SAMPLE_COUNT && count_below == 0) {
-			relay_set(HIGH);
-		} else 
-		// All samples are below threshold
-		if(count_below == SAMPLE_COUNT && count_above == 0) {
-			relay_set(LOW);
-		}
-
-		// Shift all samples a step left
-		for(i = 1; i < SAMPLE_COUNT; i++)
-			samples[i - 1] = samples[i];
-
-		timer_beg = millis();
+	for(i = 0; i < SAMPLE_COUNT; i++) {
+		if(samples[i] == true)
+			count_above++;
+		else
+			count_below++;
 	}
+
+	// All samples are above threshold
+	if(count_above == SAMPLE_COUNT && count_below == 0) {
+		relay_set(HIGH);
+	} else 
+	// All samples are below threshold
+	if(count_below == SAMPLE_COUNT && count_above == 0) {
+		relay_set(LOW);
+	}
+
+	// Shift all samples a step left
+	for(i = 1; i < SAMPLE_COUNT; i++)
+		samples[i - 1] = samples[i];
+
+}
+
+void graph_update(int tq) {
+
+	static int i, y;
+
+	// Shift all pixels on each character one step to the left
+	for(i = 0; i < GRAPH_WIDTH; i++) {
+		for(y = 0; y < 8; y++)
+			graph[i][y] <<= 1;
+	}
+
+	// Insert temperatue into last character, rightmost pixel of the graph
+	for(i = 0; i < 8; i++) {
+		if(i <= tq)
+			graph[GRAPH_WIDTH - 1][7 - i] |= 0b00000001;
+	}
+
+	// Write last character to lcd
+	lcd.createChar(GRAPH_WIDTH - 1, graph[GRAPH_WIDTH - 1]);
+
+	// Copy last bit of next char to first bit of current char
+	// and display all characters except for the last one
+	for(i = 1; i < GRAPH_WIDTH; i++) {
+		for(y = 0; y < 8; y++)
+			graph[i - 1][y] ^= ((graph[i][y] << 2) & 0b10000000) >> 7;
+		lcd.createChar(i - 1, graph[i - 1]);
+	}
+
+	// Print the graph characters to display
+	lcd.setCursor(0, 0);
+
+	for(i = 0; i < GRAPH_WIDTH; i++)
+		lcd.write((byte) i);
 
 }
 
@@ -144,7 +173,6 @@ void setup() {
 	// Initialize relay pin (default state is LOW; off)
 	pinMode(PIN_RELAY, OUTPUT);
 
-	// Initialize LCD
 	lcd.begin(16, 2);
 	lcd.clear();
 	
@@ -168,15 +196,14 @@ void setup() {
 	temp.max = 0.0f;
 
 	timers.graph = millis();
-	timers.store = timers.graph;
+	timers.sample = timers.store = timers.graph;
 
 }
 
 void loop() {
 
-	static int i, y;
-
 	/** Temperatue ******************************************************/
+
 	float t = temp.sensor->GetTemperature();
 
 	// Adjust minimum and maximum observed temperatures
@@ -202,43 +229,13 @@ void loop() {
 	
 	/** Graph ***********************************************************/
 
-	// XXX No averaging
 	if(millis() - timers.graph >= (uint32_t) TIMER_GRAPH_UPDATE_MS) {
-		Serial.println("Updating graph");
-
-		// Shift all pixels on each character one step to the left
-		for(i = 0; i < GRAPH_WIDTH; i++) {
-			for(y = 0; y < 8; y++)
-				graph[i][y] <<= 1;
-		}
-
-		// Insert temperatue into last character, rightmost pixel of the graph
-		for(i = 0; i < 8; i++) {
-			if(i <= tq)
-				graph[GRAPH_WIDTH - 1][7 - i] |= 0b00000001;
-		}
-
-		// Write last character to lcd
-		lcd.createChar(GRAPH_WIDTH - 1, graph[GRAPH_WIDTH - 1]);
-
-		// Copy last bit of next char to first bit of current char
-		// and display all characters except for the last one
-		for(i = 1; i < GRAPH_WIDTH; i++) {
-			for(y = 0; y < 8; y++)
-				graph[i - 1][y] ^= ((graph[i][y] << 2) & 0b10000000) >> 7;
-			lcd.createChar(i - 1, graph[i - 1]);
-		}
-
-		// Print the graph characters to display
-		lcd.setCursor(0, 0);
-
-		for(i = 0; i < GRAPH_WIDTH; i++)
-			lcd.write((byte) i);
-		
+		// XXX No averaging
+		graph_update(tq);
 		timers.graph = millis();
 	}
  
-	/** Temperatue Threshold ********************************************/
+	/** Temperatue & Threshold ******************************************/
 
 	// Calculate threshold, taking temp pot into consideration
 	// (This'll give 32 discrete steps with 0 in the middle)
@@ -251,6 +248,10 @@ void loop() {
 
 	/** Relay Control (abstracted) **************************************/
 
-	sample_update(t >= threshold);
+	if(millis() - timers.sample >= (uint32_t) TIMER_RELAY_UPDATE_MS) {
+		sample_update(t >= threshold);
+		timers.sample = millis();
+	}
+
 
 }
