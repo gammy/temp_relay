@@ -49,9 +49,11 @@
 
 #define GRAPH_WIDTH		7 // Max 7, since we use 8th (last) char for custom deg/C 
 
-#define PRINT_TEMP_FRACT(a) 	{ lcd.print((int) t); \
+#define RELAY_SET(a)		{ digitalWrite(PIN_RELAY, a); }
+
+#define PRINT_TEMP_FRACT(a) 	{ lcd.print((int) a); \
 	                          lcd.print('.'); \
-	                          lcd.print((int) ((t - (int) t) * 10)); \
+	                          lcd.print((int) ((a - (int) a) * 10)); \
                                   lcd.write((byte) GRAPH_WIDTH);}
 
 #define PRINT_TEMP(a)		{ lcd.print(a); \
@@ -94,7 +96,7 @@ LiquidCrystal lcd(6, 7,             // Register Select & Data Enable
 
 void relay_set(int state) {
 
-	digitalWrite(PIN_RELAY, state);
+	RELAY_SET(state);
 
 	lcd.setCursor(13, 0);
 	lcd.print(state ? " On" : "Off");
@@ -172,21 +174,23 @@ void setup() {
 
 	// Initialize relay pin (default state is LOW; off)
 	pinMode(PIN_RELAY, OUTPUT);
+	RELAY_SET(LOW);
 
 	lcd.begin(16, 2);
 	lcd.clear();
 	
-	relay_set(LOW);
-
-	lcd.setCursor(0, 0); lcd.print("Temp Relay v.1-1");
+	lcd.setCursor(0, 0); lcd.print("Temp Relay v.1-2");
 	lcd.setCursor(0, 1); lcd.print("   By gammy 2013");
 	delay(2000);
 
 	lcd.clear();
+	relay_set(LOW); // Reset it with the function so we update the lcd
 	lcd.setCursor(0, 1);
 	lcd.print("Turns on at ");
 
+#ifdef DEBUG_SERIAL
 	Serial.begin(9600);
+#endif
 			
 	if(GRAPH_WIDTH < 8)
 		lcd.createChar(GRAPH_WIDTH, char_degc);
@@ -218,11 +222,13 @@ void loop() {
 
 	int tq = (temp.scale / tmax) * (float) 8.0f;
 
-	//Serial.print("Min:"); Serial.print(t_min);
-	//Serial.print(", Max:"); Serial.print(t_max);
-	//Serial.print(", Scale:"); Serial.print(t_scale);
-	//Serial.print(", Tmax:"); Serial.print(tmax);
-	//Serial.print(", tq:"); Serial.println(tq);
+#ifdef DEBUG_SERIAL
+	Serial.print("Min:"); Serial.print(t_min);
+	Serial.print(", Max:"); Serial.print(t_max);
+	Serial.print(", Scale:"); Serial.print(t_scale);
+	Serial.print(", Tmax:"); Serial.print(tmax);
+	Serial.print(", tq:"); Serial.println(tq);
+#endif
 
 	lcd.setCursor(GRAPH_WIDTH, 0);
 	PRINT_TEMP_FRACT(t);
