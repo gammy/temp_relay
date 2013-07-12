@@ -21,6 +21,7 @@
  * TODO:
  * - Periodically store coolest and warmest readings and load on boot
  * - Periodically store the bar chart and load on boot
+ * - Add scroll functionality on bottom row to show some stats(min/max, etc)
  *
  * For Tomas
  * By gammy
@@ -36,7 +37,7 @@
 
 #define TIMER_GRAPH_UPDATE_MS   1000 * (60 * 21) // (5*7) = 35 pixels, update once every 21 minutes = ~12 hours total
 #define TIMER_RELAY_UPDATE_MS	1000
-#define TIMER_STORE_UPDATE_MS	(10 * TIMER_RELAY_UPDATE_MS)
+//#define TIMER_STORE_UPDATE_MS	(10 * TIMER_RELAY_UPDATE_MS)
 
 #define SAMPLE_COUNT		20 // Must be less than sizeof(int) - 1
 
@@ -146,7 +147,14 @@ void setup() {
 	// Initialize LCD
 	lcd.begin(16, 2);
 	lcd.clear();
+	
+	relay_set(LOW);
 
+	lcd.setCursor(0, 0); lcd.print("Temp Relay v0.1 ");
+	lcd.setCursor(0, 1); lcd.print("   By gammy 2013");
+	delay(2000);
+
+	lcd.clear();
 	lcd.setCursor(0, 1);
 	lcd.print("Turns on at ");
 
