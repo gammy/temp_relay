@@ -35,8 +35,8 @@
 
 #define THRESHOLD_BASE   	25 // In degrees C
 
-//#define TIMER_GRAPH_UPDATE_MS   1000 * (60 * 21) // (5*7) = 35 pixels, update once every 21 minutes = ~12 hours total
-#define TIMER_GRAPH_UPDATE_MS   200 // (5*7) = 35 pixels, update once every 21 minutes = ~12 hours total
+#define TIMER_GRAPH_UPDATE_MS   1000 * (60 * 21) // (5*7) = 35 pixels, update once every 21 minutes = ~12 hours total
+//#define TIMER_GRAPH_UPDATE_MS   200
 #define TIMER_RELAY_UPDATE_MS	1000
 //#define TIMER_STORE_UPDATE_MS	(10 * TIMER_RELAY_UPDATE_MS)
 
